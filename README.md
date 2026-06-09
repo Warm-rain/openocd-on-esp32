@@ -8,7 +8,8 @@
 
 - 调试器开发板必须是 ESP32-S3。普通 ESP32 内存不足，不适合运行本应用。
 - ESP32-S3 开发板必须带 PSRAM。
-- 需要在 `menuconfig` 中按实际板卡调整 Flash 与 PSRAM 的 SPI 模式，例如 DIO、QIO 或 OPI。
+- ESP32-S3-N16R8 已验证可用：16 MB Flash + 8 MB Octal PSRAM，本仓库的 `sdkconfig.defaults.esp32s3` 已按该规格设置。
+- 其他板卡需要在 `menuconfig` 中按实际规格调整 Flash 与 PSRAM 的 SPI 模式，例如 DIO、QIO 或 OPI。
 - 被调试的目标板需要已经烧录可运行的应用。
 - 调试器板和目标板需要共地。
 
@@ -68,11 +69,17 @@ cd openocd-on-esp32
 git submodule update --init --recursive
 ```
 
-如果你从 fork 克隆时遇到 `main/openocd` 子模块找不到仓库，可以把该子模块临时指向 Espressif 上游：
+`main/openocd` 子模块使用 Espressif 的 OpenOCD 上游仓库。如果旧版本 fork 的子模块 URL 仍指向不存在的 `../openocd-esp32.git`，可以手动修正：
 
 ```powershell
 git config submodule.main/openocd.url https://github.com/espressif/openocd-esp32.git
 git submodule update --init --recursive main/openocd
+```
+
+如果 Windows 下 OpenOCD 子模块在生成 `startup_tcl.inc` 时失败，可以应用本仓库保留的 Windows 构建补丁：
+
+```powershell
+git -C main/openocd apply ..\..\patches\openocd-esp32-windows-startup-tcl.patch
 ```
 
 ## Windows 环境准备
@@ -143,7 +150,13 @@ idf.py menuconfig
 
 ## 烧录和监视
 
-使用串口烧录并打开监视器：
+ESP32-S3-N16R8 当前枚举为 `COM5` 时，可以直接烧录并打开监视器：
+
+```powershell
+idf.py -p COM5 flash monitor
+```
+
+通用写法如下：
 
 ```powershell
 idf.py -p COMx flash monitor
@@ -158,7 +171,7 @@ idf.py -p COMx app-flash monitor
 构建完成后也可以用 esptool 手动烧录：
 
 ```powershell
-python -m esptool --chip esp32s3 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 8MB --flash_freq 80m 0x0 build\bootloader\bootloader.bin 0x8000 build\partition_table\partition-table.bin 0x10000 build\openocd-on-esp32.bin 0x510000 build\storage.bin
+python -m esptool --chip esp32s3 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 16MB --flash_freq 80m 0x0 build\bootloader\bootloader.bin 0x8000 build\partition_table\partition-table.bin 0x10000 build\openocd-on-esp32.bin 0x510000 build\storage.bin
 ```
 
 ## 通过 JTAG 烧录应用
@@ -179,12 +192,17 @@ cmake --build build -t jtag-flasher
 打开 monitor 后，设备联网成功并启动 OpenOCD 时会看到类似日志：
 
 ```text
+I (...) boot.esp32s3: SPI Flash Size : 16MB
+I (...) esp_psram: Found 8MB PSRAM device
+I (...) esp_psram: SPI SRAM memory test OK
 Open On-Chip Debugger 0.12.0
 Info : Listening on port 6666 for tcl connections
 Info : Listening on port 4444 for telnet connections
 Info : esp_gpio GPIO JTAG/SWD bitbang driver
 Info : Listening on port 3333 for gdb connections
 ```
+
+首次启动还没有保存 Wi-Fi 或 OpenOCD 配置时，`ESP_ERR_NVS_NOT_FOUND` 和默认开启 `esp-openocd` AP 模式是正常现象。
 
 如果 OpenOCD 报告 JTAG chain 异常、读到 `0x00` 或 `0x1f`，优先检查：
 
@@ -253,6 +271,16 @@ $env:PROCESSOR_ARCHITECTURE = 'AMD64'
 
 ```powershell
 winget install --id ezwinports.make --source winget
+```
+
+### ESP32-S3-N16R8 启动时报 PSRAM 模式错误
+
+如果日志中出现 `PSRAM chip is not connected`、`wrong PSRAM line mode` 或 `Failed to init external RAM`，通常是 PSRAM 模式不匹配。ESP32-S3-N16R8 应使用 16 MB Flash 和 Octal PSRAM，确认配置中包含：
+
+```ini
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_SPIRAM_MODE_OCT=y
 ```
 
 ## 许可证

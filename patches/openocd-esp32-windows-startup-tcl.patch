@@ -1,0 +1,29 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 3e1492569..687855bf9 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -85,4 +85,21 @@ target_link_libraries(openocd_main PUBLIC ${openocd_targets})
+ get_property(startup_tcl_sources TARGET tcl_scripts PROPERTY STARTUP_TCL_SRCS)
+-add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/startup_tcl.inc
+-	COMMAND cat ${startup_tcl_sources} |
+-    ${CMAKE_CURRENT_LIST_DIR}/helper/bin2char.sh > ${CMAKE_BINARY_DIR}/startup_tcl.inc || rm -f ${CMAKE_BINARY_DIR}/startup_tcl.inc)
++if(CMAKE_HOST_WIN32)
++	find_program(OPENOCD_SH_EXECUTABLE sh
++		HINTS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin")
++	if(NOT OPENOCD_SH_EXECUTABLE)
++		message(FATAL_ERROR "Git sh.exe is required to generate startup_tcl.inc on Windows")
++	endif()
++
++	set(startup_tcl_sources_shell "")
++	foreach(startup_tcl_source IN LISTS startup_tcl_sources)
++		string(APPEND startup_tcl_sources_shell " '${startup_tcl_source}'")
++	endforeach()
++
++	add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/startup_tcl.inc
++		COMMAND ${OPENOCD_SH_EXECUTABLE} -c "cat${startup_tcl_sources_shell} | '${CMAKE_CURRENT_LIST_DIR}/helper/bin2char.sh' > '${CMAKE_BINARY_DIR}/startup_tcl.inc' || rm -f '${CMAKE_BINARY_DIR}/startup_tcl.inc'"
++		VERBATIM)
++else()
++	add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/startup_tcl.inc
++		COMMAND cat ${startup_tcl_sources} |
++		${CMAKE_CURRENT_LIST_DIR}/helper/bin2char.sh > ${CMAKE_BINARY_DIR}/startup_tcl.inc || rm -f ${CMAKE_BINARY_DIR}/startup_tcl.inc)
++endif()
