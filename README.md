@@ -1,137 +1,273 @@
-# OpenOCD application for ESP32-S3
+# ESP32-S3 上运行的 OpenOCD 调试器
 
-This repository contains a port of OpenOCD which runs on an ESP32-S3. It allows using an ESP32-S3 board as a stand-alone debugger for other chips, which exposes a GDB server port over Wi-Fi or Ethernet.
+本项目把 OpenOCD 移植到 ESP32-S3 上，使一块 ESP32-S3 开发板可以作为独立调试器使用，并通过 Wi-Fi 或以太网向目标芯片暴露 GDB Server。
 
-The repository also demonstrates how a complex application (such as OpenOCD) can be ported to ESP-IDF.
+仓库也展示了如何把 OpenOCD 这类较复杂的 C 项目集成到 ESP-IDF 工程中。
 
-## Prerequisites
+## 硬件要求
 
-- This application only can run on ESP32-S3 boards which will function as a debugger. ESP32 is not supported due to the limited memory.
-- PSRAM is necessary for the ESP32-S3 boards.
-- Make sure to adjust Flash and PSRAM spi modes (DIO, QIO, OPI) from the menuconfig.
-- Target board should be flashed with an application.
-- Connect GPIOs from the debugger board to the target board using JTAG interface.
+- 调试器开发板必须是 ESP32-S3。普通 ESP32 内存不足，不适合运行本应用。
+- ESP32-S3 开发板必须带 PSRAM。
+- 需要在 `menuconfig` 中按实际板卡调整 Flash 与 PSRAM 的 SPI 模式，例如 DIO、QIO 或 OPI。
+- 被调试的目标板需要已经烧录可运行的应用。
+- 调试器板和目标板需要共地。
 
-  |Master pin | Function | Slave pin |
-  |-----------|----------|-----------|
-  | 38        | TCK      | 13        |
-  | 39        | TMS      | 14        |
-  | 40        | TDI      | 12        |
-  | 41        | TDO      | 15        |
+## JTAG 连接
 
-If necessary, the master pins can be adjusted at run time using `esp_gpio_jtag_nums <tck> <tms> <tdi> <tdo>` OpenOCD command. For example,
+默认 JTAG 引脚如下：
 
-    esp_gpio_jtag_nums 38 39 40 41
+| ESP32-S3 调试器引脚 | 功能 | 目标板引脚示例 |
+| --- | --- | --- |
+| GPIO38 | TCK | GPIO13 |
+| GPIO39 | TMS | GPIO14 |
+| GPIO40 | TDI | GPIO12 |
+| GPIO41 | TDO | GPIO15 |
 
-sets the configuration shown above. The default pins are set in `interface/esp_gpio_jtag.cfg` file (in the OpenOCD submodule).
+运行时可以通过 OpenOCD 命令修改 JTAG 引脚：
 
-- Connect a led to see the JTAG tx/rx activity (optional)
-
-  If a led is connected to one of the GPIO pins, it can be activated with  `esp_gpio_blink_num <led_pin_num>` OpenOCD command inside `interface/esp_gpio_jtag.cfg`
-
-SWD interface is also supported. The target board can be connected from the SWD pins using `interface/esp_gpio_swd.cfg`
-
-|Master pin | Slave Pin Function |
-|-----------|--------------------|
-| 38        |       SWCLK        |
-| 39        |       SWDIO        |
-
-## Supported IDF versions
-
-All components are expected to be usable with IDF 5.0 or later versions.
-
-## Build and flash
-
-1. Get the submodules: `git submodule update --init --recursive`.
-
-2. Configure Wi-Fi SSID and password in menuconfig.
-
-3. Run `idf.py flash monitor` to build and flash the application and the FATFS filesystem image (generated at build time). When flashing again, use `idf.py app-flash` to only flash the application.
-
-## Flash from jtag
-
-With the help of OpenOCD, it is also possible to load application from the jtag. During the cmake configuration phase, openocd binary is beging searched in the installed idf tools directory. If the binary is found, 2 commands will be ready to run;
-
-1. Use `cmake --build build -t jtag-flasher-full`  to flash the application and the FATFS filesystem
-
-2. Use `cmake --build build -t jtag-flasher` to only flash the application to the specific locatioon. Which is 0x10000 by default.
-
-`board/esp32s3-builtin.cfg` is used as an OpenOCD config file by default.
-
-## Run
-
-Open the monitor and check that the ESP32-S3 output ends with the following:
-
+```tcl
+esp_gpio_jtag_nums 38 39 40 41
 ```
-I (6393) example_common: - IPv4 address: 192.168.32.56,
-I (6393) example_common: - IPv6 address: fe80:0000:0000:0000:7edf:a1ff:fee0:104c, type: ESP_IP6_ADDR_IS_LINK_LOCAL
-Open On-Chip Debugger 0.12.0 (2023-12-20-21:53)
-Licensed under GNU GPL v2
-For bug reports, read
-        http://openocd.org/doc/doxygen/bugs.html
-debug_level: 2
-Warn : Could not determine executable path, using configured BINDIR.
-1
-esp_gpio GPIO config: tck = 38, tms = 39, tdi = 40, tdo = 41
-3
-Info : auto-selecting first available session transport "jtag". To override use 'transport select <transport>'.
+
+默认引脚配置位于 OpenOCD 子模块中的 `interface/esp_gpio_jtag.cfg`。
+
+如需显示 JTAG 收发活动，可以外接 LED，并在 `interface/esp_gpio_jtag.cfg` 中使用：
+
+```tcl
+esp_gpio_blink_num <led_pin_num>
+```
+
+## SWD 连接
+
+项目也支持 SWD，默认连接如下：
+
+| ESP32-S3 调试器引脚 | 目标板功能 |
+| --- | --- |
+| GPIO38 | SWCLK |
+| GPIO39 | SWDIO |
+
+SWD 默认配置文件为 OpenOCD 子模块中的 `interface/esp_gpio_swd.cfg`。
+
+## 软件环境
+
+推荐使用 ESP-IDF 5.x。当前工程已在以下环境验证通过：
+
+- Windows
+- ESP-IDF v5.5.4
+- Python 3.11
+- Git for Windows
+- GNU Make
+
+项目声明的最低 ESP-IDF 版本为 5.0，但新环境建议优先使用稳定的 5.x 版本。
+
+## 拉取源码
+
+```powershell
+git clone https://github.com/Warm-rain/openocd-on-esp32.git
+cd openocd-on-esp32
+git submodule update --init --recursive
+```
+
+如果你从 fork 克隆时遇到 `main/openocd` 子模块找不到仓库，可以把该子模块临时指向 Espressif 上游：
+
+```powershell
+git config submodule.main/openocd.url https://github.com/espressif/openocd-esp32.git
+git submodule update --init --recursive main/openocd
+```
+
+## Windows 环境准备
+
+安装 ESP-IDF v5.5.4 的一个可复现示例：
+
+```powershell
+mkdir F:\esp
+git clone --branch v5.5.4 --recursive --depth 1 --shallow-submodules https://github.com/espressif/esp-idf.git F:\esp\esp-idf-v5.5.4
+
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+$env:IDF_TOOLS_PATH = 'F:\esp\.espressif'
+powershell -ExecutionPolicy Bypass -File F:\esp\esp-idf-v5.5.4\install.ps1 esp32s3
+```
+
+如果当前 shell 中的 `python` 来自 PlatformIO 虚拟环境，建议把系统 Python 放到 PATH 前面再安装或构建：
+
+```powershell
+$env:PATH = 'C:\Users\Windows\AppData\Local\Programs\Python\Python311;C:\Users\Windows\AppData\Local\Programs\Python\Python311\Scripts;' + $env:PATH
+```
+
+Windows 构建 JimTcl 还需要 GNU Make。可以使用 winget 安装：
+
+```powershell
+winget install --id ezwinports.make --source winget --accept-source-agreements --accept-package-agreements
+```
+
+每次打开新终端后，先加载 ESP-IDF 环境：
+
+```powershell
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+$env:IDF_TOOLS_PATH = 'F:\esp\.espressif'
+. F:\esp\esp-idf-v5.5.4\export.ps1
+```
+
+## 构建
+
+设置目标芯片并构建：
+
+```powershell
+idf.py set-target esp32s3
+idf.py build
+```
+
+构建成功后会生成：
+
+- `build/openocd-on-esp32.bin`
+- `build/bootloader/bootloader.bin`
+- `build/partition_table/partition-table.bin`
+- `build/storage.bin`
+
+当前默认分区表中应用分区大小为 5 MB，FATFS 存储分区从 `0x510000` 开始。
+
+## 配置 Wi-Fi
+
+烧录前可以进入配置菜单设置 Wi-Fi：
+
+```powershell
+idf.py menuconfig
+```
+
+常用配置包括：
+
+- Wi-Fi SSID 与密码
+- Flash / PSRAM 模式
+- 是否启用 ESP-BOX 屏幕 UI
+- OpenOCD 启动参数
+
+## 烧录和监视
+
+使用串口烧录并打开监视器：
+
+```powershell
+idf.py -p COMx flash monitor
+```
+
+把 `COMx` 替换成实际串口号。再次只烧录应用时可以使用：
+
+```powershell
+idf.py -p COMx app-flash monitor
+```
+
+构建完成后也可以用 esptool 手动烧录：
+
+```powershell
+python -m esptool --chip esp32s3 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 8MB --flash_freq 80m 0x0 build\bootloader\bootloader.bin 0x8000 build\partition_table\partition-table.bin 0x10000 build\openocd-on-esp32.bin 0x510000 build\storage.bin
+```
+
+## 通过 JTAG 烧录应用
+
+如果 ESP-IDF 工具目录中能找到 `openocd-esp32`，CMake 会生成两个额外目标：
+
+```powershell
+cmake --build build -t jtag-flasher-full
+cmake --build build -t jtag-flasher
+```
+
+`jtag-flasher-full` 会烧录应用和 FATFS 文件系统；`jtag-flasher` 只烧录应用，默认地址为 `0x10000`。
+
+默认 OpenOCD 配置文件为 `board/esp32s3-builtin.cfg`。
+
+## 运行现象
+
+打开 monitor 后，设备联网成功并启动 OpenOCD 时会看到类似日志：
+
+```text
+Open On-Chip Debugger 0.12.0
 Info : Listening on port 6666 for tcl connections
 Info : Listening on port 4444 for telnet connections
 Info : esp_gpio GPIO JTAG/SWD bitbang driver
-Info : clock speed 1000 kHz
-Info : JTAG tap: esp32.cpu0 tap/device found: 0x120034e5 (mfg: 0x272 (Tensilica), part: 0x2003, ver: 0x1)
-Info : JTAG tap: esp32.cpu1 tap/device found: 0x120034e5 (mfg: 0x272 (Tensilica), part: 0x2003, ver: 0x1)
-Info : [esp32.cpu0] Examination succeed
-Info : [esp32.cpu1] Examination succeed
-Info : starting gdb server for esp32.cpu0 on 3333
 Info : Listening on port 3333 for gdb connections
-Info : [esp32.cpu0] Target halted, PC=0x4008456A, debug_reason=00000000
-Info : [esp32.cpu0] Reset cause (1) - (Power on reset)
-Info : [esp32.cpu1] Target halted, PC=0x4008456A, debug_reason=00000000
-Info : [esp32.cpu1] Reset cause (14) - (CPU1 reset by CPU0)
 ```
 
-If OpenOCD complains about the JTAG chain, 0x00's, 0x1f's, check the connections.
+如果 OpenOCD 报告 JTAG chain 异常、读到 `0x00` 或 `0x1f`，优先检查：
 
-Note the IP printed in the "example_connect" line before OpenOCD output starts.
+- 调试器板和目标板是否共地
+- TCK、TMS、TDI、TDO 是否接反
+- 目标板是否上电
+- JTAG 引脚是否被目标固件占用
+- OpenOCD 中配置的引脚是否与实际接线一致
 
-Run GDB and instruct it to connect to the debugger over TCP:
+## 使用 GDB 连接目标板
 
-    xtensa-esp32-elf-gdb  -ex "set remotetimeout 30" -ex "target extended-remote 192.168.0.221:3333" build/blink.elf
+记录 monitor 中打印出的 ESP32-S3 调试器 IP，然后在目标固件工程中运行：
 
-(replace the IP address with the one you saw in the log).
+```powershell
+xtensa-esp32-elf-gdb -ex "set remotetimeout 30" -ex "target extended-remote <调试器IP>:3333" build/blink.elf
+```
 
-## Web server connection
+示例：
 
-On the first run, the application creates an access point with default SSID `esp-openocd` without password. You can access the web server by connecting to this network and typing the IP address `192.168.4.1` in a browser. Then, you will see the configuration menu to instantly change Wi-Fi settings and OpenOCD command line arguments.
+```powershell
+xtensa-esp32-elf-gdb -ex "set remotetimeout 30" -ex "target extended-remote 192.168.0.221:3333" build/blink.elf
+```
+
+## Web 配网与配置
+
+首次运行时，如果尚未配置 Wi-Fi，设备会创建默认开放热点：
+
+```text
+SSID: esp-openocd
+IP:   192.168.4.1
+```
+
+连接该热点后，在浏览器打开 `http://192.168.4.1`，可以配置 Wi-Fi 和 OpenOCD 命令行参数。
+
+默认只预置 Espressif 芯片相关配置文件。其他芯片配置可以通过 Web 页面上传到文件系统。
 
 ## ESP-BOX
 
-OpenOCD application has been ported to work on the ESP-BOX development board, with configuration screen and a provisioning feature.
-By default, the ESP-BOX and UI functionality are disabled but can be enabled from the menuconfig.
+项目可以在 ESP-BOX 开发板上启用触摸屏配置界面和配网功能。默认 ESP-BOX 与 UI 功能关闭，需要通过 `idf.py menuconfig` 启用。
 
-## OpenOCD configuration
+## 常见问题
 
-The settings for OpenOCD can be configured either through the web page or the touch screen on the ESP-BOX. By default, only the configurations for Espressif chips are preloaded into the file system. However, it is also possible to use other chip configuration files by directly uploading them from the web page.
+### `idf.py` 不存在
 
-## License
+说明当前终端没有加载 ESP-IDF 环境。先执行：
 
-The code in this repository is Copyright (c) 2022-2023 Espressif Systems (Shanghai) Co. Ltd., and licensed under Apache 2.0 license, available in [LICENSE](LICENSE) file.
+```powershell
+. F:\esp\esp-idf-v5.5.4\export.ps1
+```
 
-OpenOCD source code added as a submodule is licensed under GPL v2.0 or later license.
+### ESP-IDF 安装时报 `Windows-` 平台不支持
 
-## Contributing
+当前 Python 环境可能无法识别 CPU 架构。安装前设置：
 
-We welcome contributions to this project in the form of bug reports, feature requests and pull requests.
+```powershell
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+```
 
-Issue reports and feature requests can be submitted using Github Issues: https://github.com/espressif/openocd-on-esp32/issues. Please check if the issue has already been reported before opening a new one.
+### ESP-IDF 不能在虚拟环境里创建虚拟环境
 
-Contributions in the form of pull requests should follow ESP-IDF project's [contribution guidelines](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/contribute/index.html).
+如果当前 `python` 来自 PlatformIO 的 `penv`，请切换到系统 Python，再运行 ESP-IDF 安装脚本。
 
-## Pre-commit hooks
+### Windows 下 JimTcl 或 OpenOCD 子步骤找不到 shell 工具
 
-OpenOCD-on-ESP32 project uses [pre-commit hooks](https://pre-commit.com/) to perform code formatting and other checks when you run `git commit`.
+请确认已安装 Git for Windows，并安装 GNU Make：
 
-To install pre-commit hooks, run `pip install pre-commit && pre-commit install`.
+```powershell
+winget install --id ezwinports.make --source winget
+```
 
-If a pre-commit hook has modified any of the files when you run `git commit`, add these changes using `git add` and run `git commit` again.
+## 许可证
+
+本仓库中 ESP-IDF 应用部分版权归 Espressif Systems (Shanghai) Co. Ltd. 所有，采用 Apache 2.0 许可证，详见 [LICENSE](LICENSE)。
+
+OpenOCD 子模块遵循 GPL v2.0 或更新版本许可证。
+
+## 贡献
+
+欢迎提交问题、功能建议和 Pull Request。提交前建议安装 pre-commit：
+
+```powershell
+pip install pre-commit
+pre-commit install
+```
+
+如果 pre-commit 修改了文件，请重新 `git add` 后再次提交。

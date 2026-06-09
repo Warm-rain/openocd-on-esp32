@@ -18,6 +18,9 @@ CTestTestfile.cmake
 cmake-build-debug/*
 .vscode/*
 build/*
+managed_components/
+components/jimtcl/src/
+components/jimtcl/tmp/
 doc/*
 workspace.code-workspace
 sdkconfig
