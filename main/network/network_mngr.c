@@ -28,6 +28,8 @@
 #define WIFI_AP_CHANNEL                 1
 #define WIFI_AP_MAX_CONNECTION          3
 #define WIFI_AP_BEACON_INTERVAL         100
+#define WIFI_AP_MAX_TX_POWER_QDBM       84
+#define WIFI_AP_MAX_TX_POWER_DBM        20
 
 static const char *TAG = "network-mngr";
 
@@ -254,6 +256,19 @@ esp_err_t network_mngr_init_ap(const char *ssid, const char *pass)
         return ESP_FAIL;
     }
 
+    wifi_country_t country = {
+        .cc = "CN",
+        .schan = 1,
+        .nchan = 13,
+        .max_tx_power = WIFI_AP_MAX_TX_POWER_DBM,
+        .policy = WIFI_COUNTRY_POLICY_MANUAL,
+    };
+    status = esp_wifi_set_country(&country);
+    if (status != ESP_OK) {
+        ESP_LOGE(TAG, "%s:%d wifi set country error! (%s)", __func__, __LINE__, esp_err_to_name(status));
+        return ESP_FAIL;
+    }
+
     status = esp_wifi_set_mode(WIFI_MODE_AP);
     if (status != ESP_OK) {
         ESP_LOGE(TAG, "%s:%d wifi set mode error! (%s)", __func__, __LINE__, esp_err_to_name(status));
@@ -293,12 +308,20 @@ esp_err_t network_mngr_init_ap(const char *ssid, const char *pass)
         return ESP_FAIL;
     }
 
+    status = esp_wifi_set_max_tx_power(WIFI_AP_MAX_TX_POWER_QDBM);
+    if (status != ESP_OK) {
+        ESP_LOGW(TAG, "%s:%d wifi set max tx power warning! (%s)", __func__, __LINE__, esp_err_to_name(status));
+    }
+
     if (wait_for_event(WIFI_STARTED_BIT, WIFI_START_TIMEOUT) == ESP_OK) {
         esp_netif_ip_info_t ip_info = {0};
+        int8_t tx_power_qdbm = 0;
         esp_netif_get_ip_info(s_ap_netif, &ip_info);
-        ESP_LOGI(TAG, "%s:%d SoftAP started: ssid=\"%s\", channel=%d, auth=%s, ip=" IPSTR,
+        esp_wifi_get_max_tx_power(&tx_power_qdbm);
+        ESP_LOGI(TAG, "%s:%d SoftAP started: ssid=\"%s\", channel=%d, auth=%s, tx_power=%.2f dBm, ip=" IPSTR,
                  __func__, __LINE__, ssid, WIFI_AP_CHANNEL,
                  wifi_config.ap.authmode == WIFI_AUTH_OPEN ? "open" : "wpa",
+                 tx_power_qdbm / 4.0f,
                  IP2STR(&ip_info.ip));
         return ESP_OK;
     }
