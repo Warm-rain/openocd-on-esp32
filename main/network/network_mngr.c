@@ -6,6 +6,7 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
+#include "esp_netif.h"
 #include "esp_mac.h"
 #include "wifi_provisioning/scheme_softap.h"
 
@@ -23,6 +24,10 @@
 #define WIFI_CRED_FAIL_BIT              BIT4
 #define WIFI_PROV_DONE_BIT              BIT5
 #define WIFI_PROV_DEINIT_BIT            BIT6
+
+#define WIFI_AP_CHANNEL                 1
+#define WIFI_AP_MAX_CONNECTION          3
+#define WIFI_AP_BEACON_INTERVAL         100
 
 static const char *TAG = "network-mngr";
 
@@ -209,6 +214,16 @@ static void network_mngr_show_error(int try, int max_try)
     ui_show_info_screen(msg);
 }
 
+static size_t copy_wifi_config_value(uint8_t *dst, size_t dst_size, const char *src)
+{
+    size_t len = strnlen(src, dst_size);
+    memcpy(dst, src, len);
+    if (len < dst_size) {
+        dst[len] = '\0';
+    }
+    return len;
+}
+
 esp_err_t network_mngr_init(void)
 {
     if (!s_event_group) {
@@ -245,11 +260,25 @@ esp_err_t network_mngr_init_ap(const char *ssid, const char *pass)
         return ESP_FAIL;
     }
 
+    status = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    if (status != ESP_OK) {
+        ESP_LOGE(TAG, "%s:%d wifi set bandwidth error! (%s)", __func__, __LINE__, esp_err_to_name(status));
+        return ESP_FAIL;
+    }
+
+    status = esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+    if (status != ESP_OK) {
+        ESP_LOGE(TAG, "%s:%d wifi set protocol error! (%s)", __func__, __LINE__, esp_err_to_name(status));
+        return ESP_FAIL;
+    }
+
     wifi_config_t wifi_config = {0};
-    memcpy(wifi_config.ap.ssid, ssid, sizeof(wifi_config.ap.ssid));
-    memcpy(wifi_config.ap.password, pass, sizeof(wifi_config.ap.password));
-    wifi_config.ap.ssid_len = strlen(ssid);
-    wifi_config.ap.max_connection = 3;
+    wifi_config.ap.ssid_len = copy_wifi_config_value(wifi_config.ap.ssid, sizeof(wifi_config.ap.ssid), ssid);
+    copy_wifi_config_value(wifi_config.ap.password, sizeof(wifi_config.ap.password), pass);
+    wifi_config.ap.channel = WIFI_AP_CHANNEL;
+    wifi_config.ap.max_connection = WIFI_AP_MAX_CONNECTION;
+    wifi_config.ap.ssid_hidden = 0;
+    wifi_config.ap.beacon_interval = WIFI_AP_BEACON_INTERVAL;
     wifi_config.ap.authmode = strlen(pass) == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_WPA2_PSK;
 
     status = esp_wifi_set_config(WIFI_IF_AP, &wifi_config);
@@ -265,7 +294,12 @@ esp_err_t network_mngr_init_ap(const char *ssid, const char *pass)
     }
 
     if (wait_for_event(WIFI_STARTED_BIT, WIFI_START_TIMEOUT) == ESP_OK) {
-        ESP_LOGI(TAG, "%s:%d Wifi started successfully", __func__, __LINE__);
+        esp_netif_ip_info_t ip_info = {0};
+        esp_netif_get_ip_info(s_ap_netif, &ip_info);
+        ESP_LOGI(TAG, "%s:%d SoftAP started: ssid=\"%s\", channel=%d, auth=%s, ip=" IPSTR,
+                 __func__, __LINE__, ssid, WIFI_AP_CHANNEL,
+                 wifi_config.ap.authmode == WIFI_AUTH_OPEN ? "open" : "wpa",
+                 IP2STR(&ip_info.ip));
         return ESP_OK;
     }
 
@@ -307,8 +341,8 @@ esp_err_t network_mngr_init_sta(const char *ssid, const char *pass)
     }
 
     wifi_config_t wifi_config = {0};
-    memcpy(wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
-    memcpy(wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
+    copy_wifi_config_value(wifi_config.sta.ssid, sizeof(wifi_config.sta.ssid), ssid);
+    copy_wifi_config_value(wifi_config.sta.password, sizeof(wifi_config.sta.password), pass);
     wifi_config.sta.threshold.authmode = strlen(pass) == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_WPA2_PSK;
     status = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     if (status != ESP_OK) {

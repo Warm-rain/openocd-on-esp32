@@ -195,6 +195,8 @@ cmake --build build -t jtag-flasher
 I (...) boot.esp32s3: SPI Flash Size : 16MB
 I (...) esp_psram: Found 8MB PSRAM device
 I (...) esp_psram: SPI SRAM memory test OK
+I (...) main: app mode (Access Point)
+I (...) network-mngr: SoftAP started: ssid="esp-openocd", channel=1, auth=open, ip=192.168.4.1
 Open On-Chip Debugger 0.12.0
 Info : Listening on port 6666 for tcl connections
 Info : Listening on port 4444 for telnet connections
@@ -203,6 +205,20 @@ Info : Listening on port 3333 for gdb connections
 ```
 
 首次启动还没有保存 Wi-Fi 或 OpenOCD 配置时，`ESP_ERR_NVS_NOT_FOUND` 和默认开启 `esp-openocd` AP 模式是正常现象。
+
+如果 monitor 显示 `app mode (Station)`，说明 NVS 中已经保存过 Wi-Fi SSID，固件会尝试连接该路由器而不是发出热点。需要重新回到默认 AP 模式时，可以先擦除再烧录：
+
+```powershell
+idf.py -p COM5 erase-flash
+idf.py -p COM5 flash monitor
+```
+
+如果 monitor 已显示 `SoftAP started` 但手机仍搜不到 `esp-openocd`，优先确认：
+
+- 手机或电脑正在扫描 2.4 GHz Wi-Fi，ESP32-S3 不支持 5 GHz。
+- 设备离开发板足够近，并换一台手机或电脑交叉扫描。
+- 如果模块是 `ESP32-S3-WROOM-1U` 或开发板带 IPEX/U.FL 外接天线座，请接好 2.4 GHz 天线。
+- AP 固定在 channel 1，SSID 不隐藏，默认无密码。
 
 如果 OpenOCD 报告 JTAG chain 异常、读到 `0x00` 或 `0x1f`，优先检查：
 
